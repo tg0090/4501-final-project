@@ -1,0 +1,225 @@
+import time
+import json
+import random
+import threading
+import matplotlib.pyplot as plt
+from datetime import datetime, date
+import os
+from collections import defaultdict
+
+DATA_FILE = "productivity_data.json"
+
+plants = [
+    {"name": "Sunflower", "fact": "Sunflowers follow the sun's movement across the sky."},
+    {"name": "Cactus", "fact": "Cacti store water for months in their stems."},
+    {"name": "Lavender", "fact": "Lavender is known for its calming scent."},
+    {"name": "Aloe Vera", "fact": "Aloe Vera gel is used to treat burns and wounds."},
+    {"name": "Mint", "fact": "Mint can help with digestion and freshen breath."},
+    {"name": "Bamboo", "fact": "Bamboo is one of the fastest-growing plants."},
+    {"name": "Basil", "fact": "Basil is a popular herb in Italian cuisine."},
+    {"name": "Fern", "fact": "Ferns are one of the oldest types of plants."},
+    {"name": "Rose", "fact": "Roses are symbols of love and beauty."},
+    {"name": "Venus Flytrap", "fact": "Venus Flytraps are carnivorous plants that eat insects."}
+]
+
+TIMER_THREAD = None
+STOP_TIMER = False
+SKIP_TIMER = False
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'w') as f:
+            json.dump({"tasks": [], "logs": [], "garden": [], "sessions": 0, "streak": 0, "last_active_day": None}, f)
+    with open(DATA_FILE, 'r') as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def log_session(task_id):
+    data = load_data()
+    now = datetime.now()
+    start = now.isoformat()
+    end = now.isoformat()
+    duration = 1
+    data['logs'].append({"task_id": task_id, "start_time": start, "end_time": end, "duration": duration})
+    data['sessions'] += 1
+
+    today = str(date.today())
+    last_active = data.get("last_active_day")
+    if last_active != today:
+        last_date = date.fromisoformat(last_active) if last_active else None
+        if last_date and (date.today() - last_date).days == 1:
+            data['streak'] += 1
+        else:
+            data['streak'] = 1
+        data['last_active_day'] = today
+
+    print(f"\n✔ Session logged. Total sessions: {data['sessions']}")
+    print(f"🌞 Daily Streak: {data['streak']} day(s)")
+
+    if data['sessions'] % 3 == 0:
+        award_plant(data)
+    if data['streak'] % 5 == 0:
+        print("🏆 5-Day Streak! Bonus reward:")
+        award_plant(data)
+        award_plant(data)
+
+    save_data(data)
+
+def award_plant(data):
+    collected = {plant['name'] for plant in data['garden']}
+    available = [p for p in plants if p['name'] not in collected]
+    if available:
+        plant = random.choice(available)
+        plant_entry = {"name": plant['name'], "fact": plant['fact'], "acquired_at": datetime.now().isoformat()}
+        data['garden'].append(plant_entry)
+        print(f"\n🌱 New Plant Unlocked: {plant['name']}\n💡 Fun Fact: {plant['fact']}")
+    else:
+        print("🌿 You've collected all the plants! Keep going to maintain your garden.")
+
+def view_stats():
+    data = load_data()
+    completed = len([t for t in data['tasks'] if t['status'] == 'completed'])
+    work_time = len(data['logs']) * 25
+    break_time = (data['sessions'] // 4) * 15 + (data['sessions'] % 4) * 5
+    total_days = len(set(log['start_time'][:10] for log in data['logs'])) or 1
+    avg_time_per_day = work_time / total_days
+
+    print(f"\nTasks Completed: {completed}")
+    print(f"Cumulative Work Time: {work_time} minutes")
+    print(f"Cumulative Break Time: {break_time} minutes")
+    print(f"Total Pomodoro Sessions: {data['sessions']}")
+    print(f"Average Time Per Productive Day: {avg_time_per_day:.2f} minutes")
+
+    print("\nView graph for:")
+    print("1. Tasks Completed")
+    print("2. Sessions Completed")
+    print("3. Work vs. Break Time")
+    print("4. Task Completion Over Time")
+    choice = input("Choice: ")
+
+    if choice == '1':
+        plt.bar(['Completed Tasks'], [completed])
+        plt.title("Tasks Completed")
+    elif choice == '2':
+        plt.bar(['Sessions'], [data['sessions']])
+        plt.title("Pomodoro Sessions Completed")
+    elif choice == '3':
+        plt.bar(['Work Time', 'Break Time'], [work_time, break_time])
+        plt.title("Work vs Break Time")
+    elif choice == '4':
+        date_counts = defaultdict(int)
+        for log in data['logs']:
+            day = log['start_time'][:10]
+            date_counts[day] += 1
+        dates = sorted(date_counts)
+        counts = [date_counts[d] for d in dates]
+        plt.plot(dates, counts, marker='o')
+        plt.title("Task Sessions Over Time")
+        plt.xticks(rotation=45)
+    else:
+        print("Invalid choice.")
+        return
+    plt.tight_layout()
+    plt.ylabel("Count / Minutes")
+    plt.show()
+
+if __name__ == "__main__":
+    while True:
+        data = load_data()
+        print("\n=== Productivity Garden ===")
+        print(f"🌞 Daily Streak: {data['streak']} day(s)")
+        print("1. Add Task")
+        print("2. View Task List")
+        print("3. Start Pomodoro Timer")
+        print("4. View Garden")
+        print("5. View Stats")
+        print("6. Stop Current Timer")
+        print("7. Skip Current Timer")
+        print("8. Wipe All Data")
+        print("9. Exit")
+        choice = input("Choose an option: ")
+
+        if choice == '1':
+            name = input("Task name: ")
+            data["tasks"].append({"id": len(data["tasks"]) + 1, "name": name, "status": "pending"})
+            save_data(data)
+            print(f"Task '{name}' added.")
+
+        elif choice == '2':
+            for task in data["tasks"]:
+                print(f"[{task['id']}] {task['name']} - {task['status']}")
+            print("\nEnter a task ID to complete or delete it, or press Enter to go back.")
+            choice = input("Choice: ").strip()
+            if choice.isdigit():
+                task_id = int(choice)
+                task = next((t for t in data["tasks"] if t["id"] == task_id), None)
+                if task:
+                    print(f"Selected Task: {task['name']}")
+                    print("1. Complete Task")
+                    print("2. Delete Task")
+                    print("3. Cancel")
+                    sub_choice = input("Choice: ")
+                    if sub_choice == '1':
+                        task['status'] = 'completed'
+                        save_data(data)
+                        print("Task completed.")
+                    elif sub_choice == '2':
+                        data["tasks"] = [t for t in data["tasks"] if t["id"] != task_id]
+                        save_data(data)
+                        print("Task deleted.")
+
+        elif choice == '3':
+            def start_pomodoro(task_id, work_duration=25, short_break=5, long_break=15):
+                def countdown(minutes, session_type):
+                    global STOP_TIMER, SKIP_TIMER
+                    total_seconds = minutes * 60
+                    while total_seconds and not STOP_TIMER and not SKIP_TIMER:
+                        mins, secs = divmod(total_seconds, 60)
+                        print(f"\r{session_type} - {mins:02}:{secs:02}", end='')
+                        time.sleep(1)
+                        total_seconds -= 1
+                    print(f"\n{session_type} complete.")
+                print("Starting Pomodoro session...")
+                countdown(work_duration, "Work")
+                log_session(task_id)
+                if data['sessions'] % 4 == 0:
+                    countdown(long_break, "Long Break")
+                else:
+                    countdown(short_break, "Short Break")
+            task_id = int(input("Task ID: "))
+            work = int(input("Work duration (minutes): "))
+            short = int(input("Short break (minutes): "))
+            long = int(input("Long break (minutes): "))
+            start_pomodoro(task_id, work, short, long)
+
+        elif choice == '4':
+            for plant in data['garden']:
+                print(f"{plant['name']} - {plant['fact']} (Acquired: {plant['acquired_at']})")
+
+        elif choice == '5':
+            view_stats()
+
+        elif choice == '6':
+            STOP_TIMER = True
+
+        elif choice == '7':
+            SKIP_TIMER = True
+
+        elif choice == '8':
+            confirm = input("Are you sure you want to wipe all data? (yes/no): ").lower()
+            if confirm == 'yes':
+                os.remove(DATA_FILE)
+                load_data()
+                print("All data wiped.")
+
+        elif choice == '9':
+            break
+
+        else:
+            print("Invalid choice.")
+
+if __name__ == "__main__":
+    main()
