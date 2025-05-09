@@ -22,7 +22,6 @@ plants = [
     {"name": "Venus Flytrap", "fact": "Venus Flytraps are carnivorous plants that eat insects."}
 ]
 
-TIMER_THREAD = None
 STOP_TIMER = False
 SKIP_TIMER = False
 
@@ -126,6 +125,37 @@ def view_stats():
     plt.ylabel("Count / Minutes")
     plt.show()
 
+def start_pomodoro(task_id, work_duration=25, short_break=5, long_break=15):
+    def countdown(minutes, session_type):
+        global STOP_TIMER, SKIP_TIMER
+        total_seconds = minutes * 60
+        while total_seconds > 0:
+            if STOP_TIMER:
+                print("\n⏹ Timer stopped.")
+                return
+            if SKIP_TIMER:
+                print("\n⏭ Timer skipped.")
+                return
+            mins, secs = divmod(total_seconds, 60)
+            print(f"\r{session_type} - {mins:02}:{secs:02}", end='')
+            time.sleep(1)
+            total_seconds -= 1
+        print(f"\n✅ {session_type} complete.")
+
+    def pomodoro_thread():
+        global STOP_TIMER, SKIP_TIMER
+        STOP_TIMER = False
+        SKIP_TIMER = False
+        print("🍅 Starting Pomodoro session...")
+        countdown(work_duration, "Work")
+        if not STOP_TIMER and not SKIP_TIMER:
+            log_session(task_id)
+            break_time = long_break if load_data()['sessions'] % 4 == 0 else short_break
+            countdown(break_time, "Break")
+
+    thread = threading.Thread(target=pomodoro_thread)
+    thread.start()
+
 if __name__ == "__main__":
     while True:
         data = load_data()
@@ -172,28 +202,14 @@ if __name__ == "__main__":
                         print("Task deleted.")
 
         elif choice == '3':
-            def start_pomodoro(task_id, work_duration=25, short_break=5, long_break=15):
-                def countdown(minutes, session_type):
-                    global STOP_TIMER, SKIP_TIMER
-                    total_seconds = minutes * 60
-                    while total_seconds and not STOP_TIMER and not SKIP_TIMER:
-                        mins, secs = divmod(total_seconds, 60)
-                        print(f"\r{session_type} - {mins:02}:{secs:02}", end='')
-                        time.sleep(1)
-                        total_seconds -= 1
-                    print(f"\n{session_type} complete.")
-                print("Starting Pomodoro session...")
-                countdown(work_duration, "Work")
-                log_session(task_id)
-                if data['sessions'] % 4 == 0:
-                    countdown(long_break, "Long Break")
-                else:
-                    countdown(short_break, "Short Break")
-            task_id = int(input("Task ID: "))
-            work = int(input("Work duration (minutes): "))
-            short = int(input("Short break (minutes): "))
-            long = int(input("Long break (minutes): "))
-            start_pomodoro(task_id, work, short, long)
+            try:
+                task_id = int(input("Task ID: "))
+                work = int(input("Work duration (minutes): "))
+                short = int(input("Short break (minutes): "))
+                long = int(input("Long break (minutes): "))
+                start_pomodoro(task_id, work, short, long)
+            except ValueError:
+                print("Invalid input. Please enter numbers.")
 
         elif choice == '4':
             for plant in data['garden']:
